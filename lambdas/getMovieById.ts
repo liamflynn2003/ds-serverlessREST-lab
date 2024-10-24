@@ -1,16 +1,21 @@
 import { Handler } from "aws-lambda";
-
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  QueryCommand,
+  QueryCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 
 const ddbDocClient = createDDbDocClient();
 
-export const handler: Handler = async (event, context) => {
+export const handler: Handler = async (event) => {
   try {
     // Print Event
     console.log("[EVENT]", JSON.stringify(event));
-    const parameters  = event?.pathParameters;
+
+    const parameters = event?.pathParameters;
+    const queryParams = event.queryStringParameters;
     const movieId = parameters?.movieId ? parseInt(parameters.movieId) : undefined;
 
     if (!movieId) {
@@ -23,13 +28,16 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
+    // Fetch movie metadata
     const commandOutput = await ddbDocClient.send(
       new GetCommand({
         TableName: process.env.TABLE_NAME,
         Key: { id: movieId },
       })
     );
+
     console.log("GetCommand response: ", commandOutput);
+    
     if (!commandOutput.Item) {
       return {
         statusCode: 404,
@@ -39,10 +47,24 @@ export const handler: Handler = async (event, context) => {
         body: JSON.stringify({ Message: "Invalid movie Id" }),
       };
     }
+
     const body = {
       data: commandOutput.Item,
     };
 
+    // Fetch cast data if needed
+    if (queryParams?.cast === 'true') {
+      const commandInput: QueryCommandInput = {
+        TableName: process.env.MOVIE_CAST_TABLE_NAME, // Make sure this is the MovieCast table
+        KeyConditionExpression: "movieId = :m",
+        ExpressionAttributeValues: {
+          ":m": movieId,
+        },
+      };
+
+      const castCommandOutput = await ddbDocClient.send(new QueryCommand(commandInput));
+      body.data.cast = castCommandOutput.Items || [];
+    }
     // Return Response
     return {
       statusCode: 200,
@@ -58,7 +80,7 @@ export const handler: Handler = async (event, context) => {
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ error }),
+      body: JSON.stringify({ error: error.message || "Internal Server Error" }),
     };
   }
 };

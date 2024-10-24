@@ -23,9 +23,3 @@ export type MovieCast = {
   roleName: string;
   roleDescription: string;
 };
-// Used to validate the query string of HTTP Get requests
-export type MovieCastMemberQueryParams = {
-  movieId: string;
-  actorName?: string;
-  roleName?: string
-}
